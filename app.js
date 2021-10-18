@@ -10,7 +10,7 @@ class Game {
     constructor(fishSize) {
         this.state = 'inactive'
         this.config = {
-            timeToHook: 1070000,
+            timeToHook: 800,
             minWait: 1000,
             maxWait: 5000,
             minPull: 200,
@@ -47,9 +47,6 @@ class Game {
 }
 
 const quadrat = new Game(10, 10);
-
-console.log(quadrat.flaeche);
-
 
 let startingTime
 let totalElapsedTime
@@ -105,8 +102,8 @@ let debugWaitTime = document.querySelector("#waitTime");
 // listen mouse events
 container.addEventListener("mousedown", pressingDown, false);
 container.addEventListener("mouseup", notPressingDown, false);
-container.addEventListener("touchstart", pressingDown, false);
-container.addEventListener("touchend", notPressingDown, false);
+container.addEventListener("touchstart", touchStart, false);
+container.addEventListener("touchend", touchEnd, false);
 
 async function ticker(currentTime) {
     updateDebug()
@@ -175,7 +172,16 @@ async function ticker(currentTime) {
 
 // ticker(0);
 
+function touchStart(e) {
+    press = true;
+}
+
+function touchEnd(e) {
+    press = false;
+}
+
 function pressingDown(e) {
+    console.log(e);
     e.preventDefault();
     if (e.button !== 0) {
         return;
