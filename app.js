@@ -77,7 +77,7 @@ let game = {
     pullTime: 0,
     maxGameTime: 0,
     config: {
-        timeToHook: 1070000,
+        timeToHook: 800,
         minWait: 1000,
         maxWait: 5000,
         minPull: 200,
@@ -279,6 +279,7 @@ async function setGameLost(reason)
 {
     console.log('game lost: ', reason)
 
+    iconContainer.classList.remove("hook-icon")
     dragItem.classList.remove("border-green")
     dragItem.classList.remove("border-yellow")
     dragItem.classList.remove("pulsing")
