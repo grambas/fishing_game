@@ -178,6 +178,7 @@ function touchStart(e) {
 
 function touchEnd(e) {
     press = false;
+    resetItem();
 }
 
 function pressingDown(e) {
