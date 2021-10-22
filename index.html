@@ -11,14 +11,19 @@
 </head>
 <body>
 <div id="container">
+    <div id="fps" style="float: right;"></div>
     <div id="debug">
         <span id="totalTime"></span><br>
+        <div id="canvas"></div>
         <span id="maxGameTime"></span><br>
+        <span id="debugelapsedTimeSinceHooking2"></span><br>
         <span id="currentState"></span><br>
         <span id="waitTime"></span><br>
         <span id="pullNeeded"></span><br>
+        <span id="currentResist"></span><br>
         <span id="currentTension"></span><br>
-        <button id="startGame" onclick="startGame()">start game</button>
+        <input type="number" id="fishSize" name="fishSize" placeholder="enter fish size">
+        <button id="startBtn">start game</button>
     </div>
 
     <div id="itemContainer">

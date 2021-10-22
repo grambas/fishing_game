@@ -1,61 +1,108 @@
-// var custom = new ProgressBar.Path('#custom', {
-//   easing: 'easeInOut',
-//   duration: 2000
-// });
-//
-// custom.set(0);
-// custom.animate(1.0);
+let then, startedAt, elapsed, startingTime, totalElapsedTime, elapsedTimeSinceHooking
+let isMousePressed = false
+let inDanger = false
+
+const fps = 30
 
 class Game {
     constructor(fishSize) {
-        this.state = 'inactive'
-        this.config = {
-            timeToHook: 800,
-            minWait: 1000,
-            maxWait: 5000,
-            minPull: 200,
-            maxPull: 800,
+        this.engine = {
+            frameCount: 0,
+            fpsInterval: 1000 / fps,
         }
-        this.waitTime = this.calculateWaitTime(fishSize)
-        this.pullTime = this.calculatePullTime(fishSize)
-        this.maxGameTime = this.waitTime + this.pullTime + 3000
+        this.status = {
+            progress: 0,
+            resistProgress: 0,
+        }
+        this.const = {
+            minWait: 1000, // min time for player to wait till fish is hooked
+            maxWait: 5000, // max time for player to wait till fish is hooked
+            minPull: 3000, // min time for player to pull the fish
+            maxPull: 13000, // max time for player to pull the fish
+            timeToHook: 800, // player must click time faster then given value after fish is hooked
+            maxTimeInRed: 1000 // game lost when player pulls in shaking red state longer than given time
+        }
+        this.state = 'inactive'
+        this.timeInRed = 0
+        this.maxGameTime = this.waitTime + this.pullTime + 10000 // define max game time
+        this.waitTime = this.calculateWaitTime(fishSize) // calculate game random wait time based on config values
+        this.pullTime = this.calculatePullTime(fishSize) // calculate game random pull time based on config values
     }
 
-    get getState() {
-        return this.state;
-    }
-
-    set setState(state) {
+    setState(state) {
         console.log('state changed: ' + this.state + ' -> ' + state)
         this.state = state;
     }
 
     calculateWaitTime(fishSize) {
         // todo consider fishSize
-        return Math.floor(Math.random() * (this.config.maxWait - this.config.minWait + 1)) + this.config.minWait;
+        return Math.floor(Math.random() * (this.const.maxWait - this.const.minWait + 1)) + this.const.minWait;
     }
 
     calculatePullTime(fishSize) {
         // todo consider fishSize
-        return Math.floor(Math.random() * (this.config.maxPull - this.config.minPull + 1)) + this.config.minPull;
+        return Math.floor(Math.random() * (this.const.maxPull - this.const.minPull + 1)) + this.const.minPull;
     }
 
-    calculateMaxGameTime(fishSize) {
-        // todo consider fishSize
-        return Math.floor(Math.random() * (this.config.maxPull - this.config.minPull + 1)) + this.config.minPull;
+    isWaitingTimeReached(elapsedTime) {
+        return this.state === 'waiting' && this.waitTime < elapsedTime
+    }
+
+    checkMissedHook(elapsedTime, elapsedTimeSinceHooking) {
+        return this.state === 'hooking' && elapsedTimeSinceHooking + this.const.timeToHook < totalElapsedTime
+    }
+
+    tooLoongInRedZone() {
+        return this.timeInRed > this.const.maxTimeInRed
+    }
+
+    increaseTimeInRed(number) {
+        this.timeInRed = Math.max(0, this.timeInRed + number);
+    }
+
+    increaseFrame(isMousePressed) {
+        ++this.engine.frameCount
+        this.adjustProgress(isMousePressed)
+    }
+
+    adjustProgress(isMousePressed) {
+        if(this.state === 'pulling') {
+            if (isMousePressed) {
+                this.status.progress =  this.status.progress + fps;
+                this.status.resistProgress = this.status.resistProgress + fps
+            } else {
+                this.status.progress = Math.max(0, this.status.progress - 10); // todo dynamic define how much fish is resisting
+                this.status.resistProgress = this.status.resistProgress - fps * 2
+            }
+        }
+    }
+
+    getNormalizedProgress(){
+        if (this.status.progress === 0 || this.pullTime === 0) {
+            return 0
+        }
+
+        return (this.status.progress / this.pullTime).toFixed(4)
+    }
+
+    getResistProgress(){
+        if (this.status.resistProgress === 0) {
+            return 0;
+        }
+
+        return Math.min(1.5, 1 + this.status.resistProgress / 5000)
+    }
+
+    checkWin() {
+        return this.state === 'pulling' && this.status.progress > this.pullTime
     }
 }
 
-const quadrat = new Game(10, 10);
+let game = new Game(10);
 
-let startingTime
-let totalElapsedTime
-let elapsedTimeSinceHooking
-let timePressed = 0
-let currentSize = 0
-let press = false
 
-var circle = new ProgressBar.Circle('#circle', {
+
+let circle = new ProgressBar.Circle('#circle', {
     strokeWidth: 8,
     easing: 'easeInOut',
     // duration: 1400,
@@ -68,19 +115,6 @@ var circle = new ProgressBar.Circle('#circle', {
     }
 });
 
-let game = {
-    state: 'inactive',
-    waitTime: 0,
-    pullTime: 0,
-    maxGameTime: 0,
-    config: {
-        timeToHook: 800,
-        minWait: 1000,
-        maxWait: 5000,
-        minPull: 200,
-        maxPull: 800,
-    }
-}
 // declare game dom elements
 let container = document.querySelector("#container")
 let itemContainer = document.querySelector("#itemContainer")
@@ -96,7 +130,11 @@ let debugMaxGameTime = document.querySelector("#maxGameTime");
 let debugCurrentTension = document.querySelector("#currentTension");
 let debugCurrentState = document.querySelector("#currentState");
 let debugPullNeeded = document.querySelector("#pullNeeded");
+let debugCurrentResist = document.querySelector("#currentResist");
 let debugWaitTime = document.querySelector("#waitTime");
+let debugelapsedTimeSinceHooking2 = document.querySelector("#debugelapsedTimeSinceHooking2");
+let fpsDebug = document.querySelector("#fps")
+let results = document.querySelector("#canvas")
 
 
 // listen mouse events
@@ -105,90 +143,135 @@ container.addEventListener("mouseup", notPressingDown, false);
 container.addEventListener("touchstart", touchStart, false);
 container.addEventListener("touchend", touchEnd, false);
 
-async function ticker(currentTime) {
-    updateDebug()
+document.querySelector("#startBtn").addEventListener('click', function() {
+    let fishSize = document.querySelector("#fishSize").value
+    startGame(fishSize)
+});
+
+// let oldPress
+// function clicked() {
+//     if (game.state = 'pulling') {
+//         //start count
+//     }
+//     console.log('clicked in ticker mode');
+// }
+// function released() {
+//     console.log('released in ticker mode');
+//     if (game.state = 'pulling') {
+//         // add count to test
+//     }
+// }
+
+async function ticker() {
+    let now = Date.now()
+    totalElapsedTime = now - startedAt
 
     if (game.state === 'inactive') {
-        reset()
-        return
+        return reset()
     }
 
     if (game.state === 'lost') {
         return
     }
 
-    // pressed in waiting state
-    if (game.waitTime < totalElapsedTime && game.state === 'waiting') {
-        console.log('// pressed in waiting state', game.waitTime, totalElapsedTime);
-
-        setGameHooking()
+    if (game.state === 'pulling' && game.maxGameTime < totalElapsedTime) {
+        return await setGameLost('max game time reached')
     }
 
-    if (elapsedTimeSinceHooking + game.config.timeToHook < totalElapsedTime && game.state === 'hooking') {
-        setGameLost('missed hook')
-        return
-    }
+    // if (press !== oldPress) {
+    //     // console.log('press changed from', oldPress, 'to', press);
+    //     if (oldPress === false && press === true) {
+    //         clicked()
+    //     }
+    //     if (oldPress === true && press === false) {
+    //         console.log('press released');
+    //         released()
+    //     }
+    //
+    //     oldPress = press
+    // }
 
-    // pressed in waiting state
-    if (game.pullTime < timePressed && game.state === 'pulling') {
-        setGameWin()
-        return
-    }
 
-    if (press) {
-        timePressed++;
-        currentSize++;
+    elapsed = now - then;
 
-        if (game.state === 'waiting') {
-            setGameLost('mouse pressed in waiting state')
-            return
+    // if enough time has elapsed, draw the next frame
+    if (elapsed > game.engine.fpsInterval) {
+
+        // Get ready for next frame by setting then=now, but...
+        // Also, adjust for fpsInterval not being multiple of 16.67
+        then = now - (elapsed % game.engine.fpsInterval);
+
+        // DRAW
+        updateDebug()
+
+        if (game.isWaitingTimeReached(totalElapsedTime)) {
+            setGameHooking()
         }
 
-        // pressed in waiting state
-        if (game.state === 'waiting') {
-            setGameLost('mouse pressed not in waiting state')
-            return
+        if (game.checkMissedHook(totalElapsedTime, elapsedTimeSinceHooking)) {
+            return await setGameLost('missed hook')
         }
 
-        // pressed in waiting state
-        if (game.state === 'hooking') {
-            await setGamePulling()
+        if (game.state === 'pulling') {
+            await pullLogic()
         }
 
-        circle.set(normalizeCurrentPull())
-        scaleItem();
-    } else {
-        // timePressed = 0;
-    }
+        if (isMousePressed) {
+            if (game.state === 'waiting') {
+                return await setGameLost('mouse pressed in waiting state')
+            }
 
-    if(!startingTime) {
-        startingTime = currentTime
-    }
+            if (game.checkWin()) {
+                return await setGameWin()
+            }
 
-    totalElapsedTime = currentTime - startingTime
+            if (game.state === 'hooking') {
+                await setGamePulling()
+            }
+        }
+
+        updateCircle();
+
+        game.increaseFrame(isMousePressed)
+
+        // DEBUG / REPORT
+        let sinceStart = now - startedAt;
+        let currentFps = Math.round(1000 / (sinceStart / game.engine.frameCount ) * 100) / 100;
+        results.textContent = "Elapsed time= " + Math.round(sinceStart / 1000 * 100) / 100 + " secs"
+        fpsDebug.textContent = currentFps + "fps."
+    }
 
     requestAnimationFrame(ticker);
 }
 
-// ticker(0);
+function pullLogic() {
+    if (game.tooLoongInRedZone()) {
+        return setGameLost('to much pull in red zone', game.timeInRed, game.const.maxTimeInRed)
+    }
+
+    if (inDanger) {
+        game.increaseTimeInRed(30);
+    } else {
+        game.increaseTimeInRed(-30);
+    }
+}
 
 function touchStart(e) {
-    press = true;
+    isMousePressed = true;
 }
 
 function touchEnd(e) {
-    press = false;
+    isMousePressed = false;
     resetItem();
 }
 
 function pressingDown(e) {
-    console.log(e);
-    e.preventDefault();
+    // e.preventDefault();
     if (e.button !== 0) {
         return;
     }
 
-    press = true;
+    isMousePressed = true;
 }
 
 function notPressingDown(e) {
@@ -198,34 +281,24 @@ function notPressingDown(e) {
         return;
     }
 
-    press = false;
+    isMousePressed = false;
     resetItem();
 }
 
-function scaleItem() {
-    let size = 1 + currentSize / 500;
+function updateCircle() {
+    if (game.state === 'pulling') {
 
-    if (size > 1.5) {
-        size = 1.5;
+        pullingCss()
+        circle.set(game.getNormalizedProgress())
     }
-
-    pullingCss(size)
-    // dragItem.style.transitionDuration = "0s";
-    // dragItem.style.setProperty("--scale-value", size);
 }
 
 function resetItem() {
     console.log('reset item')
-    // dragItem.style.transitionDuration = ".2s"
-    // dragItem.style.setProperty("--scale-value", 1)
     itemContainer.classList.remove("shake-constant")
     itemContainer.classList.remove("shake-slow")
     itemContainer.classList.remove("shake-little")
-    currentSize = 0
-
-    // dragItem.classList.remove("border-green")
-    // dragItem.classList.remove("border-yellow")
-    // dragItem.classList.remove("border-red")
+    game.status.resistProgress = 0
 }
 
 function reset()
@@ -235,39 +308,35 @@ function reset()
     waitingCss(false)
     pullingCss(0, false)
 
-    timePressed = 0
     elapsedTimeSinceHooking = 0
-    timePressed = 0
     totalElapsedTime = 0
     startingTime = 0
+    startedAt = 0
 
-    setState('inactive')
+    game.setState('inactive')
 }
 
-
-function startGame()
+function startGame(fishSize)
 {
     reset()
     itemContainer.style.display = "block";
 
-    let newGame = new Game(1);
-    console.log('game', newGame);
-    game.waitTime = Math.floor(Math.random() * (game.config.maxWait - game.config.minWait + 1)) + game.config.minWait;
-    game.pullTime = Math.floor(Math.random() * (game.config.maxPull - game.config.minPull + 1)) + game.config.minPull;
-    game.maxGameTime = game.waitTime + game.pullTime + 2000
+    game = new Game(fishSize);
 
-    setState('waiting')
+    console.log('game started with fish: ' + fishSize, game)
+    game.setState('waiting')
     waitingCss()
-    ticker(0);
-}
 
+    startedAt = Date.now()
+    then = startedAt
+    ticker();
+}
 
 function setGameHooking()
 {
     waitingCss(false)
     hookingCss()
-    setState('hooking')
-
+    game.setState('hooking')
     elapsedTimeSinceHooking = totalElapsedTime
 }
 
@@ -278,9 +347,8 @@ async function setGamePulling()
     await sleep(500);
     hookingCss(false)
     circle.set(0)
-    setState('pulling')
+    game.setState('pulling')
 }
-
 
 async function setGameLost(reason)
 {
@@ -303,8 +371,10 @@ async function setGameLost(reason)
     lostIcon.style.display = "none";
     dragItem.classList.remove("border-red")
 
-    setState('lost')
+    game.setState('lost')
     reset()
+
+    // make request, todo notify about lost game
 }
 
 async function setGameWin()
@@ -325,8 +395,9 @@ async function setGameWin()
 
     okIcon.style.display = "none";
 
-    setState('win')
+    game.setState('win')
     reset()
+    // make request, todo notify about won game
 }
 
 function waitingCss(activate = true)
@@ -354,18 +425,20 @@ function hookingCss(activate = true)
     }
 }
 
-function pullingCss(size, activate = true)
+function pullingCss(activate = true)
 {
     if (activate) {
-        console.log('current size', size);
-
+        // console.log('current size', size);
+        let size = game.getResistProgress();
         fishIcon.style.display = "inline-block";
 
         if (size < 1.2) {
             // dragItem.classList.add("border-green")
+            inDanger = false
             dragItem.classList.remove("border-yellow")
             dragItem.classList.remove("border-red")
         } else if (size >= 1.2 && size <= 1.3) {
+            inDanger = false
             dragItem.classList.remove("border-green")
             dragItem.classList.add("border-yellow")
             dragItem.classList.remove("border-red")
@@ -374,6 +447,7 @@ function pullingCss(size, activate = true)
             itemContainer.classList.add("shake-little")
             itemContainer.classList.add("shake-constant")
         } else if (size > 1.3 && size < 1.5) {
+            inDanger = true
             dragItem.classList.remove("border-green")
             dragItem.classList.remove("border-yellow")
             dragItem.classList.add("border-red")
@@ -393,38 +467,20 @@ function pullingCss(size, activate = true)
     }
 }
 
-function setState(state)
-{
-    console.log('state changed: ' + game.state + ' -> ' + state)
-    game.state = state
-}
-
 /**
  *  HELP FUNCTIONS
  */
+
 
 function updateDebug()
 {
     debugCurrentState.textContent = 'Game State: ' + game.state;
     debugTotalTime.textContent = 'TotalElapsedTime: ' + Math.round(totalElapsedTime) + ' ms';
+    debugelapsedTimeSinceHooking2.textContent = 'timeInRed: ' + game.timeInRed
     debugMaxGameTime.textContent = 'Max Game time : ' + game.maxGameTime + ' ms';
-    debugWaitTime.textContent = 'Wait Time: ' +  game.waitTime + ' ms';
     debugPullNeeded.textContent = 'Pull time needed: ' +  game.pullTime;
-    debugCurrentTension.textContent = 'Current pull time: ' +  timePressed +' (' + Math.round(normalizeCurrentPull() * 100) + '%)';
-    // circle.setText(game.state)
-}
-
-/**
- *  normalized current pull value in 0-1 range with 4 decimals
- *
- * @returns {string|number}
- */
-function normalizeCurrentPull() {
-    if (timePressed === 0 || game.pullTime === 0) {
-        return 0
-    }
-
-    return  (timePressed / game.pullTime).toFixed(4)
+    debugCurrentResist.textContent = 'Resist: ' +  game.getResistProgress()
+    debugCurrentTension.textContent = 'Progress: ' +  game.getNormalizedProgress() +' (' + Math.round(game.getNormalizedProgress() * 100) + '%)';
 }
 
 function sleep(ms) {
