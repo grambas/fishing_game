@@ -266,7 +266,7 @@ function touchEnd(e) {
 }
 
 function pressingDown(e) {
-    // e.preventDefault();
+    e.preventDefault();
     if (e.button !== 0) {
         return;
     }
